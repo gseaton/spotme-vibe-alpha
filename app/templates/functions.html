@@ -1,0 +1,440 @@
+{% extends "base.html" %}
+
+{% block title %}Functions{% endblock %}
+
+{% block content %}
+<div class="notes-container">
+    <header class="notes-header">
+        <h1>Functions</h1>
+        <div class="header-actions">
+            <input type="text" id="search-input" placeholder="Search functions..." class="search-input">
+            <button id="new-function-btn" class="btn btn-primary">New Function</button>
+            <a href="/function-test" class="btn btn-success">Test Functions</a>
+            <a href="/dashboard" class="btn btn-secondary">Dashboard</a>
+            <a href="/notes" class="btn btn-secondary">Notes</a>
+            <a href="/vouchers" class="btn btn-secondary">Vouchers</a>
+            <a href="/messages" class="btn btn-secondary">Messages</a>
+            <button id="logout-btn" class="btn btn-secondary">Logout</button>
+        </div>
+    </header>
+
+    <div id="error-message" class="error-message"></div>
+    <div id="success-message" class="success-message"></div>
+
+    <div class="notes-content">
+        <div class="notes-list" id="functions-list">
+            <p class="loading">Loading functions...</p>
+        </div>
+
+        <div class="note-editor" id="function-editor" style="display: none;">
+            <form id="function-form">
+                <input type="hidden" id="function-id">
+
+                <div class="form-group">
+                    <label for="function-name">Function Name *</label>
+                    <input type="text" id="function-name" placeholder="e.g., validate_balance" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="function-description">Description</label>
+                    <input type="text" id="function-description" placeholder="Brief description of what this function does">
+                </div>
+
+                <div class="form-group">
+                    <label for="function-type">Function Type *</label>
+                    <select id="function-type" required>
+                        <option value="predicates">Predicates</option>
+                        <option value="constraints">Constraints</option>
+                        <option value="resolution">Resolution</option>
+                        <option value="lambdas">Lambdas</option>
+                        <option value="custom">Custom</option>
+                        <option value="generated">Generated</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="function-scope">Scope *</label>
+                    <select id="function-scope" required>
+                        <option value="tenant">Tenant (Private)</option>
+                        <option value="global">Global (Admin Only)</option>
+                    </select>
+                    <small class="form-hint">Global functions require admin privileges</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="return-type">Return Type</label>
+                    <select id="return-type">
+                        <option value="any">Any</option>
+                        <option value="boolean">Boolean</option>
+                        <option value="string">String</option>
+                        <option value="number">Number</option>
+                        <option value="object">Object</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Code Input Method *</label>
+                    <div class="radio-group">
+                        <label>
+                            <input type="radio" name="code-type" value="template" checked>
+                            Template Syntax
+                        </label>
+                        <label>
+                            <input type="radio" name="code-type" value="python">
+                            Raw Python
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group" id="template-group">
+                    <label for="code-template">Template Code</label>
+                    <textarea id="code-template" placeholder="e.g., $[transaction.debit]$ <= $[voucher.balance]$ AND $[transaction.debit]$ > 0.0" rows="5"></textarea>
+                    <small class="form-hint">
+                        Variables: $[var.path]$, Functions: ^[func-id]^(args), Operators: AND, OR, NOT
+                    </small>
+                </div>
+
+                <div class="form-group" id="python-group" style="display: none;">
+                    <label for="code-python">Python Code</label>
+                    <textarea id="code-python" placeholder="def execute(ctx):\n    return ctx['amount'] * 0.02" rows="8"></textarea>
+                    <small class="form-hint">
+                        Must define: def execute(ctx): ...
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label for="function-tags">Tags</label>
+                    <input type="text" id="function-tags" placeholder="validation, financial, custom">
+                    <small class="form-hint">Comma-separated tags</small>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="is-active" checked>
+                        Active
+                    </label>
+                </div>
+
+                <div class="editor-actions">
+                    <button type="submit" class="btn btn-primary">Save Function</button>
+                    <button type="button" id="cancel-btn" class="btn btn-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const API_BASE = '/api';
+let currentFunctionId = null;
+
+function getAuthHeaders() {
+    const token = localStorage.getItem('access_token');
+    return {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    };
+}
+
+function checkAuth() {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        window.location.href = '/';
+        return false;
+    }
+    return true;
+}
+
+// Toggle between template and Python code inputs
+document.querySelectorAll('input[name="code-type"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+        const templateGroup = document.getElementById('template-group');
+        const pythonGroup = document.getElementById('python-group');
+
+        if (e.target.value === 'template') {
+            templateGroup.style.display = 'block';
+            pythonGroup.style.display = 'none';
+            document.getElementById('code-python').value = '';
+        } else {
+            templateGroup.style.display = 'none';
+            pythonGroup.style.display = 'block';
+            document.getElementById('code-template').value = '';
+        }
+    });
+});
+
+async function loadFunctions() {
+    if (!checkAuth()) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/functions/`, {
+            headers: getAuthHeaders()
+        });
+
+        if (response.status === 401) {
+            localStorage.removeItem('access_token');
+            window.location.href = '/';
+            return;
+        }
+
+        if (response.ok) {
+            const functions = await response.json();
+            displayFunctions(functions);
+        } else {
+            showError('Failed to load functions');
+        }
+    } catch (error) {
+        showError('An error occurred while loading functions');
+        console.error('Error:', error);
+    }
+}
+
+function displayFunctions(functions) {
+    const functionsList = document.getElementById('functions-list');
+
+    if (functions.length === 0) {
+        functionsList.innerHTML = '<p class="no-notes">No functions yet. Create your first function!</p>';
+        return;
+    }
+
+    functionsList.innerHTML = functions.map(func => `
+        <div class="note-item function-item" data-id="${func.id}">
+            <div class="function-header">
+                <h3>${escapeHtml(func.name)}</h3>
+                <span class="badge badge-${func.scope}">${func.scope}</span>
+                <span class="badge badge-type">${func.function_type}</span>
+            </div>
+            <p>${escapeHtml(func.description || 'No description')}</p>
+            <div class="function-code-preview">
+                <code>${escapeHtml((func.code_template || func.code_python || '').substring(0, 80))}${(func.code_template || func.code_python || '').length > 80 ? '...' : ''}</code>
+            </div>
+            ${func.tags && func.tags.length > 0 ? `
+                <div class="note-tags">
+                    ${func.tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}
+                </div>
+            ` : ''}
+            <div class="note-meta">
+                <span>Created: ${new Date(func.created_at).toLocaleDateString()}</span>
+                <span>Executions: ${func.execution_count || 0}</span>
+                ${func.compilation_error ? '<span class="error-badge">Compilation Error</span>' : ''}
+                ${!func.is_active ? '<span class="inactive-badge">Inactive</span>' : ''}
+            </div>
+            <div class="note-actions">
+                <button class="btn-small btn-primary edit-btn" data-id="${func.id}">Edit</button>
+                <button class="btn-small btn-danger delete-btn" data-id="${func.id}">Delete</button>
+                <button class="btn-small btn-success test-btn" data-id="${func.id}">Test</button>
+            </div>
+        </div>
+    `).join('');
+
+    document.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => editFunction(btn.dataset.id));
+    });
+
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', () => deleteFunction(btn.dataset.id));
+    });
+
+    document.querySelectorAll('.test-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            window.location.href = `/function-test?id=${btn.dataset.id}`;
+        });
+    });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showError(message) {
+    const errorDiv = document.getElementById('error-message');
+    errorDiv.textContent = message;
+    setTimeout(() => {
+        errorDiv.textContent = '';
+    }, 5000);
+}
+
+function showSuccess(message) {
+    const successDiv = document.getElementById('success-message');
+    successDiv.textContent = message;
+    setTimeout(() => {
+        successDiv.textContent = '';
+    }, 3000);
+}
+
+function showEditor() {
+    document.getElementById('function-editor').style.display = 'block';
+}
+
+function hideEditor() {
+    document.getElementById('function-editor').style.display = 'none';
+    document.getElementById('function-form').reset();
+    document.getElementById('function-id').value = '';
+    currentFunctionId = null;
+}
+
+async function editFunction(functionId) {
+    try {
+        const response = await fetch(`${API_BASE}/functions/${functionId}`, {
+            headers: getAuthHeaders()
+        });
+
+        if (response.ok) {
+            const func = await response.json();
+            document.getElementById('function-id').value = func.id;
+            document.getElementById('function-name').value = func.name;
+            document.getElementById('function-description').value = func.description || '';
+            document.getElementById('function-type').value = func.function_type;
+            document.getElementById('function-scope').value = func.scope;
+            document.getElementById('return-type').value = func.return_type || 'any';
+            document.getElementById('function-tags').value = func.tags ? func.tags.join(', ') : '';
+            document.getElementById('is-active').checked = func.is_active;
+
+            // Set code type and content
+            if (func.code_template) {
+                document.querySelector('input[name="code-type"][value="template"]').checked = true;
+                document.getElementById('template-group').style.display = 'block';
+                document.getElementById('python-group').style.display = 'none';
+                document.getElementById('code-template').value = func.code_template;
+            } else {
+                document.querySelector('input[name="code-type"][value="python"]').checked = true;
+                document.getElementById('template-group').style.display = 'none';
+                document.getElementById('python-group').style.display = 'block';
+                document.getElementById('code-python').value = func.code_python || '';
+            }
+
+            currentFunctionId = func.id;
+            showEditor();
+        } else {
+            showError('Failed to load function');
+        }
+    } catch (error) {
+        showError('An error occurred');
+        console.error('Error:', error);
+    }
+}
+
+async function deleteFunction(functionId) {
+    if (!confirm('Are you sure you want to delete this function?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/functions/${functionId}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+
+        if (response.ok) {
+            showSuccess('Function deleted successfully');
+            loadFunctions();
+        } else {
+            const error = await response.json();
+            showError(error.detail || 'Failed to delete function');
+        }
+    } catch (error) {
+        showError('An error occurred');
+        console.error('Error:', error);
+    }
+}
+
+document.getElementById('new-function-btn').addEventListener('click', () => {
+    hideEditor();
+    showEditor();
+});
+
+document.getElementById('cancel-btn').addEventListener('click', hideEditor);
+
+document.getElementById('function-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const name = document.getElementById('function-name').value;
+    const description = document.getElementById('function-description').value;
+    const functionType = document.getElementById('function-type').value;
+    const scope = document.getElementById('function-scope').value;
+    const returnType = document.getElementById('return-type').value;
+    const tagsInput = document.getElementById('function-tags').value;
+    const isActive = document.getElementById('is-active').checked;
+    const functionId = document.getElementById('function-id').value;
+
+    const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
+
+    // Get code based on selected type
+    const codeType = document.querySelector('input[name="code-type"]:checked').value;
+    const code_template = codeType === 'template' ? document.getElementById('code-template').value : null;
+    const code_python = codeType === 'python' ? document.getElementById('code-python').value : null;
+
+    const payload = {
+        name,
+        description,
+        function_type: functionType,
+        scope,
+        return_type: returnType,
+        tags,
+        is_active: isActive,
+        code_template,
+        code_python
+    };
+
+    const method = functionId ? 'PUT' : 'POST';
+    const url = functionId ? `${API_BASE}/functions/${functionId}` : `${API_BASE}/functions/`;
+
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: getAuthHeaders(),
+            body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+            showSuccess('Function saved successfully');
+            hideEditor();
+            loadFunctions();
+        } else {
+            const error = await response.json();
+            showError(error.detail || 'Failed to save function');
+        }
+    } catch (error) {
+        showError('An error occurred');
+        console.error('Error:', error);
+    }
+});
+
+// Search functionality
+let searchTimeout;
+document.getElementById('search-input').addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(async () => {
+        const query = e.target.value.trim();
+        try {
+            const url = query
+                ? `${API_BASE}/functions/search/query?q=${encodeURIComponent(query)}`
+                : `${API_BASE}/functions/`;
+
+            const response = await fetch(url, {
+                headers: getAuthHeaders()
+            });
+
+            if (response.ok) {
+                const functions = await response.json();
+                displayFunctions(functions);
+            }
+        } catch (error) {
+            console.error('Search error:', error);
+        }
+    }, 300);
+});
+
+document.getElementById('logout-btn').addEventListener('click', () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('tenant_id');
+    window.location.href = '/';
+});
+
+loadFunctions();
+</script>
+{% endblock %}

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Recipient IDs UI Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        button { padding: 10px; margin: 10px 0; background: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        pre { background: #f5f5f5; padding: 15px; border: 1px solid #ddd; overflow: auto; }
+        input { padding: 8px; width: 400px; }
+        h2 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Recipient IDs UI Debug Test</h1>
+
+    <p><strong>User ID to test with:</strong> <code>6950ab89c8a77dece9f22f55</code></p>
+
+    <h2>Test 1: Field Parsing Logic</h2>
+    <p>This tests if the JavaScript parsing works correctly</p>
+    <input type="text" id="test-recipient-ids" value="6950ab89c8a77dece9f22f55" placeholder="Enter user IDs (comma-separated)">
+    <br>
+    <button onclick="testParsing()">Test Parse Logic</button>
+    <pre id="parse-result">Click button to test...</pre>
+
+    <h2>Test 2: Create Voucher with Recipients</h2>
+    <p>This sends an actual create request to the API</p>
+    <button onclick="testCreate()">Send Create Request</button>
+    <pre id="create-result">Click button to test...</pre>
+
+    <h2>Test 3: Check Latest Voucher</h2>
+    <p>This fetches your most recent voucher to verify recipients</p>
+    <button onclick="checkLatest()">Check Latest Voucher</button>
+    <pre id="latest-result">Click button to test...</pre>
+
+    <h2>Test 4: Browser Console Check</h2>
+    <p>Open browser console (F12) and check for any errors</p>
+    <button onclick="console.log('Console test - if you see this, console is working')">Test Console</button>
+
+    <script>
+    const API_BASE = 'http://localhost:8000/api';
+
+    function getAuthHeaders() {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            alert('Not logged in! Please login at /vouchers first');
+            return null;
+        }
+        return {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+        };
+    }
+
+    function testParsing() {
+        console.log('=== Test 1: Parsing ===');
+        const recipientIdsInput = document.getElementById('test-recipient-ids').value;
+        console.log('Raw input:', recipientIdsInput);
+
+        const recipient_ids = recipientIdsInput ? recipientIdsInput.split(',').map(t => t.trim()).filter(t => t) : [];
+        console.log('Parsed array:', recipient_ids);
+
+        document.getElementById('parse-result').textContent =
+            'Input: "' + recipientIdsInput + '"\n' +
+            'Parsed: ' + JSON.stringify(recipient_ids, null, 2) + '\n' +
+            'Length: ' + recipient_ids.length + '\n\n' +
+            (recipient_ids.length > 0 ? '✅ Parsing works!' : '❌ Parsing failed - empty array');
+    }
+
+    async function testCreate() {
+        console.log('=== Test 2: Create ===');
+        const headers = getAuthHeaders();
+        if (!headers) return;
+
+        const recipientIdsInput = document.getElementById('test-recipient-ids').value;
+        const recipient_ids = recipientIdsInput ? recipientIdsInput.split(',').map(t => t.trim()).filter(t => t) : [];
+
+        const payload = {
+            name: 'UI Debug Test ' + new Date().getTime(),
+            description: 'Testing recipient_ids from UI',
+            starting_balance: 100.00,
+            currency: 'USD',
+            tags: [],
+            expires_at: null,
+            validation_function_id: null,
+            recipient_ids: recipient_ids
+        };
+
+        console.log('Payload being sent:', payload);
+
+        try {
+            const response = await fetch(API_BASE + '/vouchers/', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(payload)
+            });
+
+            const data = await response.json();
+            console.log('Response:', data);
+
+            document.getElementById('create-result').textContent =
+                'Status: ' + response.status + '\n' +
+                'Response:\n' + JSON.stringify(data, null, 2) + '\n\n' +
+                'recipient_ids in response: ' + JSON.stringify(data.recipient_ids) + '\n' +
+                'Count: ' + (data.recipient_ids ? data.recipient_ids.length : 0) + '\n\n' +
+                (data.recipient_ids && data.recipient_ids.length > 0 ? '✅ Recipients saved!' : '❌ Recipients NOT saved');
+        } catch (error) {
+            console.error('Error:', error);
+            document.getElementById('create-result').textContent = '❌ Error: ' + error.message;
+        }
+    }
+
+    async function checkLatest() {
+        console.log('=== Test 3: Check Latest ===');
+        const headers = getAuthHeaders();
+        if (!headers) return;
+
+        try {
+            const response = await fetch(API_BASE + '/vouchers/', {
+                headers: headers
+            });
+
+            const vouchers = await response.json();
+            console.log('All vouchers:', vouchers);
+
+            if (vouchers.length === 0) {
+                document.getElementById('latest-result').textContent = '❌ No vouchers found';
+                return;
+            }
+
+            const latest = vouchers[0];
+            console.log('Latest voucher:', latest);
+
+            document.getElementById('latest-result').textContent =
+                'Latest Voucher:\n' +
+                'Name: ' + latest.name + '\n' +
+                'Code: ' + latest.code + '\n' +
+                'recipient_ids: ' + JSON.stringify(latest.recipient_ids) + '\n' +
+                'Count: ' + latest.recipient_ids.length + '\n\n' +
+                (latest.recipient_ids.length > 0 ? '✅ Has recipients!' : '⚠️ No recipients') + '\n\n' +
+                'Full response:\n' + JSON.stringify(latest, null, 2);
+        } catch (error) {
+            console.error('Error:', error);
+            document.getElementById('latest-result').textContent = '❌ Error: ' + error.message;
+        }
+    }
+
+    // Auto-check login status
+    window.onload = function() {
+        const token = localStorage.getItem('token');
+        if (!token) {
+            alert('⚠️ NOT LOGGED IN!\n\nPlease:\n1. Go to http://localhost:8000/vouchers\n2. Login\n3. Come back to this page');
+        } else {
+            console.log('✅ Token found in localStorage');
+        }
+    };
+    </script>
+</body>
+</html>

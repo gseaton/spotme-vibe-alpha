@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}My Notes{% endblock %}
+
+{% block content %}
+<div class="notes-container">
+    <header class="notes-header">
+        <h1>My Notes</h1>
+        <div class="header-actions">
+            <input type="text" id="search-input" placeholder="Search notes..." class="search-input">
+            <button id="new-note-btn" class="btn btn-primary">New Note</button>
+            <a href="/dashboard" class="btn btn-secondary">Dashboard</a>
+            <a href="/functions" class="btn btn-secondary">Functions</a>
+            <a href="/vouchers" class="btn btn-secondary">Vouchers</a>
+            <a href="/messages" class="btn btn-secondary">Messages</a>
+            <button id="logout-btn" class="btn btn-secondary">Logout</button>
+        </div>
+    </header>
+
+    <div id="error-message" class="error-message"></div>
+
+    <div class="notes-content">
+        <div class="notes-list" id="notes-list">
+            <p class="loading">Loading notes...</p>
+        </div>
+
+        <div class="note-editor" id="note-editor" style="display: none;">
+            <form id="note-form">
+                <input type="hidden" id="note-id">
+                <div class="form-group">
+                    <input type="text" id="note-title" placeholder="Note Title" required>
+                </div>
+                <div class="form-group">
+                    <textarea id="note-content" placeholder="Note Content" rows="10" required></textarea>
+                </div>
+                <div class="form-group">
+                    <input type="text" id="note-tags" placeholder="Tags (comma-separated)">
+                    <small class="form-hint">e.g., work, important, ideas</small>
+                </div>
+                <div class="editor-actions">
+                    <button type="submit" class="btn btn-primary">Save</button>
+                    <button type="button" id="cancel-btn" class="btn btn-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const API_BASE = '/api';
+let currentNoteId = null;
+
+function getAuthHeaders() {
+    const token = localStorage.getItem('access_token');
+    return {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    };
+}
+
+function checkAuth() {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        window.location.href = '/';
+        return false;
+    }
+    return true;
+}
+
+async function loadNotes() {
+    if (!checkAuth()) return;
+
+    try {
+        const response = await fetch(`${API_BASE}/notes/`, {
+            headers: getAuthHeaders()
+        });
+
+        if (response.status === 401) {
+            localStorage.removeItem('access_token');
+            window.location.href = '/';
+            return;
+        }
+
+        if (response.ok) {
+            const notes = await response.json();
+            displayNotes(notes);
+        } else {
+            showError('Failed to load notes');
+        }
+    } catch (error) {
+        showError('An error occurred while loading notes');
+        console.error('Error:', error);
+    }
+}
+
+function displayNotes(notes) {
+    const notesList = document.getElementById('notes-list');
+
+    if (notes.length === 0) {
+        notesList.innerHTML = '<p class="no-notes">No notes yet. Create your first note!</p>';
+        return;
+    }
+
+    notesList.innerHTML = notes.map(note => `
+        <div class="note-item" data-id="${note.id}">
+            <h3>${escapeHtml(note.title)}</h3>
+            <p>${escapeHtml(note.content.substring(0, 100))}${note.content.length > 100 ? '...' : ''}</p>
+            ${note.tags && note.tags.length > 0 ? `
+                <div class="note-tags">
+                    ${note.tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}
+                </div>
+            ` : ''}
+            <div class="note-meta">
+                <span>${new Date(note.created_at).toLocaleDateString()}</span>
+            </div>
+            <div class="note-actions">
+                <button class="btn-small btn-primary edit-btn" data-id="${note.id}">Edit</button>
+                <button class="btn-small btn-danger delete-btn" data-id="${note.id}">Delete</button>
+            </div>
+        </div>
+    `).join('');
+
+    document.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => editNote(btn.dataset.id));
+    });
+
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', () => deleteNote(btn.dataset.id));
+    });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showError(message) {
+    const errorDiv = document.getElementById('error-message');
+    errorDiv.textContent = message;
+    setTimeout(() => {
+        errorDiv.textContent = '';
+    }, 5000);
+}
+
+function showEditor() {
+    document.getElementById('note-editor').style.display = 'block';
+}
+
+function hideEditor() {
+    document.getElementById('note-editor').style.display = 'none';
+    document.getElementById('note-form').reset();
+    document.getElementById('note-id').value = '';
+    currentNoteId = null;
+}
+
+async function editNote(noteId) {
+    try {
+        const response = await fetch(`${API_BASE}/notes/${noteId}`, {
+            headers: getAuthHeaders()
+        });
+
+        if (response.ok) {
+            const note = await response.json();
+            document.getElementById('note-id').value = note.id;
+            document.getElementById('note-title').value = note.title;
+            document.getElementById('note-content').value = note.content;
+            document.getElementById('note-tags').value = note.tags ? note.tags.join(', ') : '';
+            currentNoteId = note.id;
+            showEditor();
+        } else {
+            showError('Failed to load note');
+        }
+    } catch (error) {
+        showError('An error occurred');
+        console.error('Error:', error);
+    }
+}
+
+async function deleteNote(noteId) {
+    if (!confirm('Are you sure you want to delete this note?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/notes/${noteId}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+
+        if (response.ok) {
+            loadNotes();
+        } else {
+            showError('Failed to delete note');
+        }
+    } catch (error) {
+        showError('An error occurred');
+        console.error('Error:', error);
+    }
+}
+
+document.getElementById('new-note-btn').addEventListener('click', () => {
+    hideEditor();
+    showEditor();
+});
+
+document.getElementById('cancel-btn').addEventListener('click', hideEditor);
+
+document.getElementById('note-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const title = document.getElementById('note-title').value;
+    const content = document.getElementById('note-content').value;
+    const tagsInput = document.getElementById('note-tags').value;
+    const noteId = document.getElementById('note-id').value;
+
+    // Parse tags from comma-separated string
+    const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
+
+    const method = noteId ? 'PUT' : 'POST';
+    const url = noteId ? `${API_BASE}/notes/${noteId}` : `${API_BASE}/notes/`;
+
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ title, content, tags })
+        });
+
+        if (response.ok) {
+            hideEditor();
+            loadNotes();
+        } else {
+            showError('Failed to save note');
+        }
+    } catch (error) {
+        showError('An error occurred');
+        console.error('Error:', error);
+    }
+});
+
+// Search functionality
+let searchTimeout;
+document.getElementById('search-input').addEventListener('input', (e) => {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(async () => {
+        const query = e.target.value.trim();
+        try {
+            const url = query
+                ? `${API_BASE}/notes/search/query?q=${encodeURIComponent(query)}`
+                : `${API_BASE}/notes/`;
+
+            const response = await fetch(url, {
+                headers: getAuthHeaders()
+            });
+
+            if (response.ok) {
+                const notes = await response.json();
+                displayNotes(notes);
+            }
+        } catch (error) {
+            console.error('Search error:', error);
+        }
+    }, 300);
+});
+
+document.getElementById('logout-btn').addEventListener('click', () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('tenant_id');
+    window.location.href = '/';
+});
+
+loadNotes();
+</script>
+{% endblock %}

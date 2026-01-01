@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}Login - SpotMe{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card">
+        <h1>SpotMe</h1>
+        <h2>Login</h2>
+
+        <div id="error-message" class="error-message"></div>
+
+        <form id="login-form">
+            <div class="form-group">
+                <label for="tenant_id">Tenant ID</label>
+                <input type="text" id="tenant_id" name="tenant_id" required placeholder="Enter your tenant ID">
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" required placeholder="Enter your email">
+            </div>
+
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required placeholder="Enter your password">
+            </div>
+
+            <button type="submit" class="btn btn-primary">Login</button>
+        </form>
+
+        <div class="auth-footer">
+            <p>Don't have an account? <a href="/register">Register here</a></p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const tenantId = document.getElementById('tenant_id').value;
+    const errorDiv = document.getElementById('error-message');
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+
+    // Clear previous messages
+    errorDiv.textContent = '';
+
+    // Add loading state
+    submitBtn.classList.add('btn-loading');
+    submitBtn.disabled = true;
+
+    try {
+        const formData = new URLSearchParams();
+        formData.append('username', email);
+        formData.append('password', password);
+        formData.append('scope', tenantId);
+
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: formData
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            localStorage.setItem('access_token', data.access_token);
+            localStorage.setItem('tenant_id', tenantId);
+            localStorage.setItem('user_email', email);
+
+            // Show success before redirect
+            submitBtn.textContent = 'Success! Redirecting...';
+            setTimeout(() => {
+                window.location.href = '/dashboard';
+            }, 500);
+        } else {
+            const error = await response.json();
+            errorDiv.textContent = error.detail || 'Login failed. Please check your credentials.';
+
+            // Remove loading state
+            submitBtn.classList.remove('btn-loading');
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        errorDiv.textContent = 'An error occurred. Please check your connection and try again.';
+        console.error('Error:', error);
+
+        // Remove loading state
+        submitBtn.classList.remove('btn-loading');
+        submitBtn.disabled = false;
+    }
+});
+</script>
+{% endblock %}

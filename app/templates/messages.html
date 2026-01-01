@@ -1,0 +1,1294 @@
+{% extends "base.html" %}
+
+{% block title %}Messages{% endblock %}
+
+{% block content %}
+<div class="messages-container">
+    <header class="messages-header">
+        <h1>Messages</h1>
+        <div class="header-actions">
+            <span id="unread-badge" class="badge badge-primary" style="display: none; margin-right: 10px;">0 unread</span>
+            <button id="new-message-btn" class="btn btn-primary">New Message</button>
+            <a href="/dashboard" class="btn btn-secondary">Dashboard</a>
+            <a href="/notes" class="btn btn-secondary">Notes</a>
+            <a href="/functions" class="btn btn-secondary">Functions</a>
+            <a href="/vouchers" class="btn btn-secondary">Vouchers</a>
+            <button id="logout-btn" class="btn btn-secondary">Logout</button>
+        </div>
+    </header>
+
+    <div id="error-message" class="error-message"></div>
+    <div id="success-message" class="success-message"></div>
+
+    <div class="messages-main">
+        <!-- Messages Table Container -->
+        <div class="messages-table-container">
+            <div class="table-controls">
+                <div class="view-tabs">
+                    <button id="inbox-tab" class="tab-btn active" data-view="inbox">Inbox</button>
+                    <button id="sent-tab" class="tab-btn" data-view="sent">Sent</button>
+                </div>
+                <div class="table-actions">
+                    <button id="refresh-btn" class="btn-small btn-secondary">
+                        <span>↻</span> Refresh
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-wrapper">
+                <table class="messages-table" id="messages-table">
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-sort="from" style="width: 25%;">
+                                <span class="th-content">From/To</span>
+                                <span class="sort-indicator"></span>
+                            </th>
+                            <th class="sortable" data-sort="subject" style="width: 40%;">
+                                <span class="th-content">Subject</span>
+                                <span class="sort-indicator"></span>
+                            </th>
+                            <th class="sortable" data-sort="type" style="width: 15%;">
+                                <span class="th-content">Type</span>
+                                <span class="sort-indicator"></span>
+                            </th>
+                            <th class="sortable active desc" data-sort="date" style="width: 20%;">
+                                <span class="th-content">Date</span>
+                                <span class="sort-indicator">▼</span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="messages-tbody">
+                        <tr class="loading-row">
+                            <td colspan="4" class="loading-cell">Loading messages...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="pagination-controls">
+                <div class="pagination-info">
+                    <span id="page-info">Page 1 of 1</span>
+                    <span class="separator">|</span>
+                    <span id="total-info">0 messages</span>
+                </div>
+                <div class="pagination-buttons">
+                    <button id="first-page-btn" class="btn-small btn-secondary" disabled>First</button>
+                    <button id="prev-page-btn" class="btn-small btn-secondary" disabled>Previous</button>
+                    <input type="number" id="page-input" class="page-input" value="1" min="1">
+                    <button id="next-page-btn" class="btn-small btn-secondary" disabled>Next</button>
+                    <button id="last-page-btn" class="btn-small btn-secondary" disabled>Last</button>
+                </div>
+                <div class="page-size-control">
+                    <label>Show:</label>
+                    <select id="page-size-select" class="page-size-select">
+                        <option value="10">10</option>
+                        <option value="25" selected>25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                    <span>per page</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reading Pane -->
+        <div class="reading-pane" id="reading-pane">
+            <div class="reading-pane-empty" id="reading-pane-empty">
+                <p>Select a message to read</p>
+            </div>
+            <div class="reading-pane-content" id="reading-pane-content" style="display: none;">
+                <div class="message-header">
+                    <div class="message-subject">
+                        <h2 id="read-subject"></h2>
+                        <div class="message-badges" id="read-badges"></div>
+                    </div>
+                    <div class="message-actions">
+                        <button id="reply-btn" class="btn-small btn-primary" style="display: none;">Reply</button>
+                        <button id="delete-message-btn" class="btn-small btn-danger" style="display: none;">Delete</button>
+                        <button id="close-pane-btn" class="btn-small btn-secondary">Close</button>
+                    </div>
+                </div>
+                <div class="message-meta">
+                    <div class="meta-row">
+                        <span class="meta-label">From:</span>
+                        <span id="read-from"></span>
+                    </div>
+                    <div class="meta-row" id="read-to-row" style="display: none;">
+                        <span class="meta-label">To:</span>
+                        <span id="read-to"></span>
+                    </div>
+                    <div class="meta-row">
+                        <span class="meta-label">Date:</span>
+                        <span id="read-date"></span>
+                    </div>
+                    <div class="meta-row" id="read-voucher-row" style="display: none;">
+                        <span class="meta-label">Related Voucher:</span>
+                        <span id="read-voucher"></span>
+                    </div>
+                </div>
+                <div class="message-body">
+                    <div id="read-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Message Composer Modal -->
+<div id="composer-modal" class="modal" style="display: none;">
+    <div class="modal-overlay" id="composer-overlay"></div>
+    <div class="modal-dialog modal-lg">
+        <div class="modal-header">
+            <h3>New Message</h3>
+            <button class="modal-close" id="close-composer-btn">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="message-form">
+                <div class="form-group">
+                    <label>To: *</label>
+                    <div class="recipient-selector">
+                        <input type="text" id="recipient-search" placeholder="Search users by email..." class="form-control" autocomplete="off">
+                        <div id="recipient-suggestions" class="suggestions-dropdown"></div>
+                        <div id="selected-recipients" class="selected-items"></div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Subject: *</label>
+                    <input type="text" id="message-subject" placeholder="Message subject" class="form-control" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Message: *</label>
+                    <textarea id="message-content" placeholder="Type your message here..." class="form-control" rows="12" required></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Related Voucher (Optional):</label>
+                    <select id="related-voucher-select" class="form-control">
+                        <option value="">None</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" id="cancel-compose-btn">Cancel</button>
+            <button type="submit" form="message-form" class="btn btn-primary">Send Message</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const API_BASE = '/api';
+let currentView = 'inbox';
+let currentMessageId = null;
+let selectedRecipients = [];
+let recipientSearchTimeout = null;
+let allMessages = [];
+let currentPage = 1;
+let pageSize = 25;
+let sortColumn = 'date';
+let sortDirection = 'desc';
+
+function getAuthHeaders() {
+    const token = localStorage.getItem('access_token');
+    return {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    };
+}
+
+function checkAuth() {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        window.location.href = '/';
+        return false;
+    }
+    return true;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showError(message) {
+    const errorDiv = document.getElementById('error-message');
+    errorDiv.textContent = message;
+    setTimeout(() => {
+        errorDiv.textContent = '';
+    }, 5000);
+}
+
+function showSuccess(message) {
+    const successDiv = document.getElementById('success-message');
+    successDiv.textContent = message;
+    setTimeout(() => {
+        successDiv.textContent = '';
+    }, 3000);
+}
+
+async function loadUnreadCount() {
+    try {
+        const response = await fetch(`${API_BASE}/messages/unread/count`, {
+            headers: getAuthHeaders()
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            const badge = document.getElementById('unread-badge');
+            if (data.unread_count > 0) {
+                badge.textContent = `${data.unread_count} unread`;
+                badge.style.display = 'inline-block';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    } catch (error) {
+        console.error('Error loading unread count:', error);
+    }
+}
+
+async function loadMessages(view = 'inbox') {
+    if (!checkAuth()) return;
+
+    currentView = view;
+    const endpoint = view === 'inbox' ? '/messages/' : '/messages/sent';
+
+    try {
+        const response = await fetch(`${API_BASE}${endpoint}`, {
+            headers: getAuthHeaders()
+        });
+
+        if (response.status === 401) {
+            localStorage.removeItem('access_token');
+            window.location.href = '/';
+            return;
+        }
+
+        if (response.ok) {
+            allMessages = await response.json();
+            currentPage = 1;
+            renderTable();
+            loadUnreadCount();
+        } else {
+            showError('Failed to load messages');
+        }
+    } catch (error) {
+        showError('An error occurred while loading messages');
+        console.error('Error:', error);
+    }
+}
+
+function sortMessages(column) {
+    if (sortColumn === column) {
+        sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        sortColumn = column;
+        sortDirection = 'asc';
+    }
+
+    allMessages.sort((a, b) => {
+        let valA, valB;
+
+        switch (column) {
+            case 'from':
+                valA = currentView === 'inbox' ? (a.sender_email || '') : `To: ${a.recipient_ids.length}`;
+                valB = currentView === 'inbox' ? (b.sender_email || '') : `To: ${b.recipient_ids.length}`;
+                break;
+            case 'subject':
+                valA = a.subject || '';
+                valB = b.subject || '';
+                break;
+            case 'type':
+                valA = a.message_type || '';
+                valB = b.message_type || '';
+                break;
+            case 'date':
+                valA = new Date(a.created_at);
+                valB = new Date(b.created_at);
+                break;
+            default:
+                return 0;
+        }
+
+        if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+        if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    renderTable();
+    updateSortIndicators();
+}
+
+function updateSortIndicators() {
+    document.querySelectorAll('.messages-table th.sortable').forEach(th => {
+        th.classList.remove('active', 'asc', 'desc');
+        th.querySelector('.sort-indicator').textContent = '';
+    });
+
+    const activeTh = document.querySelector(`.messages-table th[data-sort="${sortColumn}"]`);
+    if (activeTh) {
+        activeTh.classList.add('active', sortDirection);
+        activeTh.querySelector('.sort-indicator').textContent = sortDirection === 'asc' ? '▲' : '▼';
+    }
+}
+
+function renderTable() {
+    const tbody = document.getElementById('messages-tbody');
+    const startIdx = (currentPage - 1) * pageSize;
+    const endIdx = startIdx + pageSize;
+    const pageMessages = allMessages.slice(startIdx, endIdx);
+
+    if (pageMessages.length === 0) {
+        tbody.innerHTML = `
+            <tr class="empty-row">
+                <td colspan="4" class="empty-cell">No messages in ${currentView}</td>
+            </tr>
+        `;
+    } else {
+        tbody.innerHTML = pageMessages.map(message => {
+            const isUnread = !message.is_read && currentView === 'inbox';
+            const displayFrom = currentView === 'inbox'
+                ? escapeHtml(message.sender_email || 'Unknown')
+                : `To: ${message.recipient_ids.length} recipient(s)`;
+
+            const messageTypeLabel = message.message_type === 'funder_invitation' ? 'Invitation' :
+                                     message.message_type === 'system' ? 'System' : 'User';
+
+            const date = new Date(message.created_at);
+            const dateStr = date.toLocaleString();
+
+            return `
+                <tr class="message-row ${isUnread ? 'unread' : ''}" data-id="${message.id}">
+                    <td class="from-col">${displayFrom}</td>
+                    <td class="subject-col">
+                        ${escapeHtml(message.subject)}
+                        ${isUnread ? '<span class="badge badge-new">New</span>' : ''}
+                    </td>
+                    <td class="type-col">
+                        <span class="type-badge type-${message.message_type}">${messageTypeLabel}</span>
+                    </td>
+                    <td class="date-col">${dateStr}</td>
+                </tr>
+            `;
+        }).join('');
+
+        // Add click handlers
+        document.querySelectorAll('.message-row').forEach(row => {
+            row.addEventListener('click', () => viewMessage(row.dataset.id));
+        });
+    }
+
+    updatePagination();
+}
+
+function updatePagination() {
+    const totalPages = Math.ceil(allMessages.length / pageSize);
+    const pageInfo = document.getElementById('page-info');
+    const totalInfo = document.getElementById('total-info');
+    const pageInput = document.getElementById('page-input');
+
+    pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+    totalInfo.textContent = `${allMessages.length} message${allMessages.length !== 1 ? 's' : ''}`;
+    pageInput.value = currentPage;
+    pageInput.max = totalPages;
+
+    document.getElementById('first-page-btn').disabled = currentPage === 1;
+    document.getElementById('prev-page-btn').disabled = currentPage === 1;
+    document.getElementById('next-page-btn').disabled = currentPage >= totalPages;
+    document.getElementById('last-page-btn').disabled = currentPage >= totalPages;
+}
+
+function changePage(newPage) {
+    const totalPages = Math.ceil(allMessages.length / pageSize);
+    if (newPage < 1) newPage = 1;
+    if (newPage > totalPages) newPage = totalPages;
+    currentPage = newPage;
+    renderTable();
+}
+
+function changePageSize(newSize) {
+    pageSize = parseInt(newSize);
+    currentPage = 1;
+    renderTable();
+}
+
+async function viewMessage(messageId) {
+    try {
+        const response = await fetch(`${API_BASE}/messages/${messageId}`, {
+            headers: getAuthHeaders()
+        });
+
+        if (response.ok) {
+            const message = await response.json();
+            displayReadingPane(message);
+
+            // Mark as read if it's an inbox message and unread
+            if (currentView === 'inbox' && !message.is_read) {
+                await markAsRead(messageId);
+            }
+        } else {
+            showError('Failed to load message');
+        }
+    } catch (error) {
+        showError('An error occurred while loading the message');
+        console.error('Error:', error);
+    }
+}
+
+function displayReadingPane(message) {
+    currentMessageId = message.id;
+
+    document.getElementById('reading-pane-empty').style.display = 'none';
+    document.getElementById('reading-pane-content').style.display = 'block';
+
+    document.getElementById('read-subject').textContent = message.subject;
+    document.getElementById('read-from').textContent = message.sender_email || 'Unknown';
+    document.getElementById('read-date').textContent = new Date(message.created_at).toLocaleString();
+    document.getElementById('read-content').textContent = message.content;
+
+    // Show "To" field for sent messages
+    const toRow = document.getElementById('read-to-row');
+    if (currentView === 'sent') {
+        document.getElementById('read-to').textContent = `${message.recipient_ids.length} recipient(s)`;
+        toRow.style.display = 'flex';
+    } else {
+        toRow.style.display = 'none';
+    }
+
+    // Badges
+    const badgesDiv = document.getElementById('read-badges');
+    const badges = [];
+    if (message.message_type === 'funder_invitation') badges.push('<span class="badge badge-info">Invitation</span>');
+    if (message.message_type === 'system') badges.push('<span class="badge badge-warning">System</span>');
+    if (!message.is_read && currentView === 'inbox') badges.push('<span class="badge badge-new">New</span>');
+    badgesDiv.innerHTML = badges.join(' ');
+
+    // Related voucher
+    const voucherRow = document.getElementById('read-voucher-row');
+    if (message.related_voucher_id) {
+        document.getElementById('read-voucher').innerHTML = `<a href="/vouchers?id=${message.related_voucher_id}">${message.related_voucher_id}</a>`;
+        voucherRow.style.display = 'flex';
+    } else {
+        voucherRow.style.display = 'none';
+    }
+
+    // Action buttons
+    document.getElementById('reply-btn').style.display = currentView === 'inbox' ? 'inline-block' : 'none';
+    document.getElementById('delete-message-btn').style.display = currentView === 'sent' ? 'inline-block' : 'none';
+}
+
+async function markAsRead(messageId) {
+    try {
+        await fetch(`${API_BASE}/messages/${messageId}/read`, {
+            method: 'POST',
+            headers: getAuthHeaders()
+        });
+
+        // Update the message in allMessages array
+        const msgIndex = allMessages.findIndex(m => m.id === messageId);
+        if (msgIndex !== -1) {
+            allMessages[msgIndex].is_read = true;
+        }
+
+        renderTable();
+        loadUnreadCount();
+    } catch (error) {
+        console.error('Error marking message as read:', error);
+    }
+}
+
+function closeReadingPane() {
+    document.getElementById('reading-pane-empty').style.display = 'flex';
+    document.getElementById('reading-pane-content').style.display = 'none';
+    currentMessageId = null;
+}
+
+function showComposer() {
+    document.getElementById('composer-modal').style.display = 'block';
+    document.getElementById('message-form').reset();
+    selectedRecipients = [];
+    displaySelectedRecipients();
+    loadVouchersForSelect();
+}
+
+function hideComposer() {
+    document.getElementById('composer-modal').style.display = 'none';
+    selectedRecipients = [];
+}
+
+async function searchUsersForRecipients(query) {
+    if (query.length < 2) {
+        document.getElementById('recipient-suggestions').innerHTML = '';
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/auth/users/search?q=${encodeURIComponent(query)}&all_tenants=true`, {
+            headers: getAuthHeaders()
+        });
+
+        if (response.ok) {
+            const users = await response.json();
+            displayRecipientSuggestions(users);
+        }
+    } catch (error) {
+        console.error('Error searching users:', error);
+    }
+}
+
+function displayRecipientSuggestions(users) {
+    const suggestionsDiv = document.getElementById('recipient-suggestions');
+
+    if (users.length === 0) {
+        suggestionsDiv.innerHTML = '<div class="suggestion-item">No users found</div>';
+        return;
+    }
+
+    suggestionsDiv.innerHTML = users
+        .filter(user => !selectedRecipients.find(r => r.id === user.id))
+        .map(user => `
+            <div class="suggestion-item" data-id="${user.id}" data-email="${escapeHtml(user.email)}">
+                ${escapeHtml(user.email)}
+                <span class="user-tenant">(${escapeHtml(user.tenant_id)})</span>
+            </div>
+        `).join('');
+
+    document.querySelectorAll('#recipient-suggestions .suggestion-item').forEach(item => {
+        item.addEventListener('click', () => {
+            if (item.dataset.id) {
+                addRecipient({ id: item.dataset.id, email: item.dataset.email });
+            }
+        });
+    });
+}
+
+function addRecipient(user) {
+    if (!selectedRecipients.find(r => r.id === user.id)) {
+        selectedRecipients.push(user);
+        displaySelectedRecipients();
+        document.getElementById('recipient-search').value = '';
+        document.getElementById('recipient-suggestions').innerHTML = '';
+    }
+}
+
+function removeRecipient(userId) {
+    selectedRecipients = selectedRecipients.filter(r => r.id !== userId);
+    displaySelectedRecipients();
+}
+
+function displaySelectedRecipients() {
+    const container = document.getElementById('selected-recipients');
+
+    if (selectedRecipients.length === 0) {
+        container.innerHTML = '<em style="color: #6c757d;">No recipients selected</em>';
+        return;
+    }
+
+    container.innerHTML = selectedRecipients.map(recipient => `
+        <div class="selected-item">
+            <span>${escapeHtml(recipient.email)}</span>
+            <button type="button" class="remove-btn" data-id="${recipient.id}">&times;</button>
+        </div>
+    `).join('');
+
+    document.querySelectorAll('#selected-recipients .remove-btn').forEach(btn => {
+        btn.addEventListener('click', () => removeRecipient(btn.dataset.id));
+    });
+}
+
+async function loadVouchersForSelect() {
+    try {
+        const response = await fetch(`${API_BASE}/vouchers/`, {
+            headers: getAuthHeaders()
+        });
+
+        if (response.ok) {
+            const vouchers = await response.json();
+            const select = document.getElementById('related-voucher-select');
+            select.innerHTML = '<option value="">None</option>' +
+                vouchers.map(v => `<option value="${v.id}">${escapeHtml(v.name)} (${v.code})</option>`).join('');
+        }
+    } catch (error) {
+        console.error('Error loading vouchers:', error);
+    }
+}
+
+async function sendMessage(event) {
+    event.preventDefault();
+
+    if (selectedRecipients.length === 0) {
+        showError('Please select at least one recipient');
+        return;
+    }
+
+    const messageData = {
+        recipient_ids: selectedRecipients.map(r => r.id),
+        subject: document.getElementById('message-subject').value,
+        content: document.getElementById('message-content').value,
+        message_type: 'user',
+        related_voucher_id: document.getElementById('related-voucher-select').value || null
+    };
+
+    try {
+        const response = await fetch(`${API_BASE}/messages/`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(messageData)
+        });
+
+        if (response.ok) {
+            showSuccess('Message sent successfully');
+            hideComposer();
+            loadMessages('sent');
+            document.getElementById('sent-tab').click();
+        } else {
+            const error = await response.json();
+            showError(error.detail || 'Failed to send message');
+        }
+    } catch (error) {
+        showError('An error occurred while sending the message');
+        console.error('Error:', error);
+    }
+}
+
+async function deleteCurrentMessage() {
+    if (!currentMessageId) return;
+
+    if (!confirm('Are you sure you want to delete this message?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/messages/${currentMessageId}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+
+        if (response.ok || response.status === 204) {
+            showSuccess('Message deleted successfully');
+            closeReadingPane();
+            loadMessages(currentView);
+        } else {
+            showError('Failed to delete message');
+        }
+    } catch (error) {
+        showError('An error occurred while deleting the message');
+        console.error('Error:', error);
+    }
+}
+
+// Event Listeners
+document.getElementById('inbox-tab').addEventListener('click', () => {
+    document.getElementById('inbox-tab').classList.add('active');
+    document.getElementById('sent-tab').classList.remove('active');
+    closeReadingPane();
+    loadMessages('inbox');
+});
+
+document.getElementById('sent-tab').addEventListener('click', () => {
+    document.getElementById('sent-tab').classList.add('active');
+    document.getElementById('inbox-tab').classList.remove('active');
+    closeReadingPane();
+    loadMessages('sent');
+});
+
+document.getElementById('refresh-btn').addEventListener('click', () => {
+    loadMessages(currentView);
+});
+
+document.getElementById('new-message-btn').addEventListener('click', showComposer);
+document.getElementById('close-composer-btn').addEventListener('click', hideComposer);
+document.getElementById('cancel-compose-btn').addEventListener('click', hideComposer);
+document.getElementById('composer-overlay').addEventListener('click', hideComposer);
+
+document.getElementById('close-pane-btn').addEventListener('click', closeReadingPane);
+document.getElementById('reply-btn').addEventListener('click', () => {
+    showComposer();
+    // TODO: Pre-fill recipient from current message
+});
+document.getElementById('delete-message-btn').addEventListener('click', deleteCurrentMessage);
+
+document.getElementById('message-form').addEventListener('submit', sendMessage);
+
+// Recipient search with debounce
+document.getElementById('recipient-search').addEventListener('input', (e) => {
+    clearTimeout(recipientSearchTimeout);
+    recipientSearchTimeout = setTimeout(() => {
+        searchUsersForRecipients(e.target.value);
+    }, 300);
+});
+
+// Close suggestions when clicking outside
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.recipient-selector')) {
+        document.getElementById('recipient-suggestions').innerHTML = '';
+    }
+});
+
+// Sortable columns
+document.querySelectorAll('.messages-table th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+        sortMessages(th.dataset.sort);
+    });
+});
+
+// Pagination controls
+document.getElementById('first-page-btn').addEventListener('click', () => changePage(1));
+document.getElementById('prev-page-btn').addEventListener('click', () => changePage(currentPage - 1));
+document.getElementById('next-page-btn').addEventListener('click', () => changePage(currentPage + 1));
+document.getElementById('last-page-btn').addEventListener('click', () => {
+    const totalPages = Math.ceil(allMessages.length / pageSize);
+    changePage(totalPages);
+});
+
+document.getElementById('page-input').addEventListener('change', (e) => {
+    changePage(parseInt(e.target.value));
+});
+
+document.getElementById('page-size-select').addEventListener('change', (e) => {
+    changePageSize(e.target.value);
+});
+
+document.getElementById('logout-btn').addEventListener('click', () => {
+    localStorage.removeItem('access_token');
+    window.location.href = '/';
+});
+
+// Initialize
+checkAuth();
+loadMessages('inbox');
+loadUnreadCount();
+setInterval(loadUnreadCount, 30000);
+</script>
+{% endblock %}
+
+{% block styles %}
+<style>
+.messages-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+    height: calc(100vh - 40px);
+    display: flex;
+    flex-direction: column;
+}
+
+.messages-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.header-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.messages-main {
+    display: flex;
+    gap: 20px;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* Table Container */
+.messages-table-container {
+    flex: 2;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: white;
+    overflow: hidden;
+}
+
+.table-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e0e0e0;
+    background: #f8f9fa;
+}
+
+.view-tabs {
+    display: flex;
+    gap: 4px;
+}
+
+.tab-btn {
+    padding: 8px 16px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-weight: 500;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.tab-btn:hover {
+    background: #e8e8e8;
+}
+
+.tab-btn.active {
+    background: white;
+    border: 1px solid #007bff;
+    color: #007bff;
+}
+
+.table-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.table-wrapper {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.messages-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.messages-table thead {
+    position: sticky;
+    top: 0;
+    background: #f8f9fa;
+    z-index: 10;
+}
+
+.messages-table th {
+    padding: 12px 16px;
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid #dee2e6;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.messages-table th.sortable {
+    cursor: pointer;
+    position: relative;
+}
+
+.messages-table th.sortable:hover {
+    background: #e9ecef;
+}
+
+.th-content {
+    display: inline-block;
+    margin-right: 8px;
+}
+
+.sort-indicator {
+    display: inline-block;
+    width: 12px;
+    color: #6c757d;
+    font-size: 0.8em;
+}
+
+.messages-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f0f0f0;
+    border-right: 1px solid #f0f0f0;
+}
+
+.messages-table td:last-child {
+    border-right: none;
+}
+
+.message-row {
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.message-row:hover {
+    background: #f8f9fa;
+}
+
+.message-row.unread {
+    background: #e7f3ff;
+    font-weight: 600;
+}
+
+.message-row.unread:hover {
+    background: #d0e7ff;
+}
+
+.loading-cell, .empty-cell {
+    text-align: center;
+    padding: 40px;
+    color: #6c757d;
+}
+
+.subject-col {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.type-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75em;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.type-user {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+
+.type-system {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.type-funder_invitation {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.badge-new {
+    background: #dc3545;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-size: 0.7em;
+    font-weight: 600;
+    margin-left: 8px;
+}
+
+/* Pagination */
+.pagination-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-top: 1px solid #e0e0e0;
+    background: #f8f9fa;
+}
+
+.pagination-info {
+    display: flex;
+    gap: 12px;
+    font-size: 0.9em;
+    color: #6c757d;
+}
+
+.pagination-buttons {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.page-input {
+    width: 60px;
+    text-align: center;
+    padding: 4px 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    margin: 0 4px;
+}
+
+.page-size-control {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 0.9em;
+}
+
+.page-size-select {
+    padding: 4px 8px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+}
+
+/* Reading Pane */
+.reading-pane {
+    flex: 1;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background: white;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.reading-pane-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #999;
+    font-size: 1.1em;
+}
+
+.reading-pane-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.message-header {
+    padding: 20px;
+    border-bottom: 2px solid #e0e0e0;
+}
+
+.message-subject {
+    margin-bottom: 12px;
+}
+
+.message-subject h2 {
+    margin: 0 0 8px 0;
+    font-size: 1.5em;
+}
+
+.message-badges {
+    display: flex;
+    gap: 8px;
+}
+
+.message-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.message-meta {
+    padding: 16px 20px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.meta-row {
+    display: flex;
+    margin-bottom: 8px;
+    font-size: 0.9em;
+}
+
+.meta-label {
+    font-weight: 600;
+    min-width: 120px;
+    color: #6c757d;
+}
+
+.message-body {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+#read-content {
+    white-space: pre-wrap;
+    line-height: 1.6;
+    color: #333;
+}
+
+/* Modal */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+}
+
+.modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.modal-dialog {
+    position: relative;
+    max-width: 800px;
+    margin: 40px auto;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    max-height: calc(100vh - 80px);
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.modal-header h3 {
+    margin: 0;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    color: #6c757d;
+    line-height: 1;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+}
+
+.modal-close:hover {
+    color: #333;
+}
+
+.modal-body {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.modal-footer {
+    padding: 16px 20px;
+    border-top: 1px solid #e0e0e0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.recipient-selector {
+    position: relative;
+}
+
+.suggestions-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 1000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.suggestion-item {
+    padding: 10px;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.suggestion-item:hover {
+    background: #f8f9fa;
+}
+
+.user-tenant {
+    font-size: 0.85em;
+    color: #666;
+}
+
+.selected-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+    min-height: 40px;
+    padding: 8px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.selected-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #007bff;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.9em;
+}
+
+.selected-item .remove-btn {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1.2em;
+    cursor: pointer;
+    padding: 0;
+    width: 20px;
+    height: 20px;
+    line-height: 1;
+}
+
+.selected-item .remove-btn:hover {
+    color: #ffcccc;
+}
+
+/* Cursor styles */
+button {
+    cursor: pointer;
+}
+
+input[type="text"],
+input[type="number"],
+textarea,
+select {
+    cursor: text;
+}
+
+select {
+    cursor: pointer;
+}
+
+.page-input {
+    cursor: text;
+}
+
+.page-size-select {
+    cursor: pointer;
+}
+
+#recipient-search {
+    cursor: text;
+}
+
+#message-subject,
+#message-content {
+    cursor: text;
+}
+
+@media (max-width: 1200px) {
+    .messages-main {
+        flex-direction: column;
+    }
+
+    .messages-table-container {
+        max-height: 50vh;
+    }
+
+    .reading-pane {
+        min-height: 300px;
+    }
+}
+</style>
+{% endblock %}
